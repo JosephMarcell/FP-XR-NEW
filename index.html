@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Game AR Klasifikasi Sampah</title>
+
+
+    <script async src="//apps.8thwall.com/xrweb?appKey=ufpu3"></script>
+
+    <!-- A-Frame Library - Framework untuk WebXR -->
+    <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+
+    <!-- A-Frame Extras - Komponen tambahan -->
+    <script src="https://cdn.jsdelivr.net/gh/donmccurdy/aframe-extras@v6.1.1/dist/aframe-extras.min.js"></script>
+
+    <!-- Physics System - Untuk fisika realistis (gravitasi, tabrakan) -->
+    <script src="https://cdn.jsdelivr.net/gh/n5ro/aframe-physics-system@v4.0.1/dist/aframe-physics-system.min.js"></script>
+
+    <!-- 8th Wall A-Frame Integration -->
+    <script src="//cdn.8thwall.com/web/aframe/8frame-0.10.0.min.js"></script>
+
+    <style>
+      /* Reset default browser styling */
+      body {
+        margin: 0;
+        overflow: hidden;
+        font-family: 'Arial', sans-serif;
+      }
+
+      /* Tampilan Score & Info di pojok kiri atas */
+      #ui-overlay {
+        position: fixed;
+        top: 10px;
+        left: 10px;
+        z-index: 1000;
+        background: rgba(0, 0, 0, 0.7);
+        color: white;
+        padding: 15px;
+        border-radius: 10px;
+        font-size: 14px;
+      }
+
+      /* Styling untuk angka score */
+      #score {
+        font-size: 24px;
+        font-weight: bold;
+        color: #4caf50;
+      }
+
+      /* Instruksi di bagian bawah layar */
+      #instructions {
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 1000;
+        background: rgba(0, 0, 0, 0.8);
+        color: white;
+        padding: 15px 30px;
+        border-radius: 20px;
+        text-align: center;
+        max-width: 80%;
+      }
+
+      /* Pop-up message saat benar/salah */
+      .status-message {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 1001;
+        background: rgba(76, 175, 80, 0.9);
+        color: white;
+        padding: 20px 40px;
+        border-radius: 15px;
+        font-size: 20px;
+        font-weight: bold;
+        display: none;
+      }
+
+      /* Loading screen saat app dimulai */
+      #loading {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 2000;
+        background: rgba(0, 0, 0, 0.9);
+        color: white;
+        padding: 30px;
+        border-radius: 15px;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Loading Screen - Akan hilang otomatis saat AR siap -->
+    <div id="loading">
+      <h2>Memuat AR Experience...</h2>
+      <p>Mohon tunggu...</p>
+    </div>
+
+    <!-- UI Overlay - Menampilkan score dan info -->
+    <div id="ui-overlay">
+      <div>Score: <span id="score">0</span></div>
+      <div id="current-trash" style="margin-top: 10px">Jenis Sampah: -</div>
+      <div id="combo" style="margin-top: 5px; color: #ffd700">Combo: 0</div>
+    </div>
+
+    <!-- Instruksi untuk user -->
+    <div id="instructions">
+      📸 Arahkan kamera ke logo untuk memulai!<br />
+      🗑️ Scan gambar sampah untuk bermain<br />
+      🎯 Tap untuk melempar sampah!
+    </div>
+
+    <!-- Pop-up message (benar/salah) -->
+    <div id="status-message" class="status-message"></div>
+
+    <script>
+      /* =====================================================
+           GAME STATE MANAGEMENT
+           Menyimpan data game seperti score, combo, dll
+           ===================================================== */
+      let gameState = {
+        score: 0,
+        combo: 0,
+        currentTrash: null,
+        binsVisible: false,
+        trashTypes: {
+          organic: { name: 'Organik', color: '#4CAF50', bin: 'green' },
+          inorganic: { name: 'Anorganik', color: '#2196F3', bin: 'blue' },
+          hazardous: { name: 'B3/Hazardous', color: '#F44336', bin: 'red' },
+        },
+      };
+
+      /* Update score di layar */
+      function updateScore(points) {
+        gameState.score += points;
+        document.getElementById('score').textContent = gameState.score;
+      }
+
+      /* Update combo di layar */
+      function updateCombo(value) {
+        gameState.combo = value;
+        document.getElementById('combo').textContent = 'Combo: ' + gameState.combo;
+      }
+
+      /* Tampilkan pesan benar/salah */
+      function showMessage(text, isCorrect = true) {
+        const msgEl = document.getElementById('status-message');
+        msgEl.textContent = text;
+        msgEl.style.background = isCorrect ? 'rgba(76, 175, 80, 0.9)' : 'rgba(244, 67, 54, 0.9)';
+        msgEl.style.display = 'block';
+        setTimeout(() => {
+          msgEl.style.display = 'none';
+        }, 2000);
+      }
+
+      /* =====================================================
+           KOMPONEN: BIN TARGET HANDLER
+           Menangani deteksi marker tong sampah
+           ===================================================== */
+      AFRAME.registerComponent('bin-target-handler', {
+        init: function () {
+          let el = this.el;
+          let content = el.querySelector('[bin-content]');
+
+          // Ketika marker terdeteksi
+          el.addEventListener('targetFound', (ev) => {
+            console.log('Marker tong sampah terdeteksi!');
+            gameState.binsVisible = true;
+
+            if (content) {
+              content.setAttribute('visible', 'true');
+              // Animasi muncul dengan elastic effect
+              content.setAttribute('animation__scale', {
+                property: 'scale',
+                from: '0.01 0.01 0.01',
+                to: '1 1 1',
+                dur: 800,
+                easing: 'easeOutElastic',
+              });
+            }
+
+            showMessage('🎯 Tong sampah muncul!');
+          });
+
+          // Ketika marker hilang dari kamera
+          el.addEventListener('targetLost', (ev) => {
+            console.log('Marker tong sampah hilang');
+            gameState.binsVisible = false;
+
+            if (content) {
+              content.setAttribute('visible', 'false');
+            }
+          });
+        },
+      });
+
+      /* =====================================================
+           KOMPONEN: TRASH TARGET HANDLER
+           Menangani deteksi marker sampah
+           ===================================================== */
+      AFRAME.registerComponent('trash-target-handler', {
+        schema: {
+          trashType: { type: 'string', default: 'organic' },
+        },
+
+        init: function () {
+          let el = this.el;
+          let data = this.data;
+          let content = el.querySelector('[trash-content]');
+
+          // Ketika marker sampah terdeteksi
+          el.addEventListener('targetFound', (ev) => {
+            console.log('Marker sampah terdeteksi: ' + data.trashType);
+
+            // Validasi: tong sampah harus sudah muncul dulu
+            if (!gameState.binsVisible) {
+              showMessage('⚠️ Scan logo tong sampah dulu!', false);
+              return;
+            }
+
+            // Set jenis sampah yang aktif
+            gameState.currentTrash = data.trashType;
+            document.getElementById('current-trash').textContent =
+              'Sampah: ' + gameState.trashTypes[data.trashType].name;
+
+            // Tampilkan objek 3D sampah
+            if (content) {
+              content.setAttribute('visible', 'true');
+              content.setAttribute('animation__scale', {
+                property: 'scale',
+                from: '0.01 0.01 0.01',
+                to: '1.5 1.5 1.5',
+                dur: 600,
+                easing: 'easeOutElastic',
+              });
+            }
+          });
+
+          // Ketika marker sampah hilang
+          el.addEventListener('targetLost', (ev) => {
+            console.log('Marker sampah hilang');
+            gameState.currentTrash = null;
+            document.getElementById('current-trash').textContent = 'Jenis Sampah: -';
+
+            if (content) {
+              content.setAttribute('visible', 'false');
+            }
+          });
+        },
+      });
+
+      /* =====================================================
+           KOMPONEN: THROWABLE TRASH
+           Membuat sampah bisa dilempar dengan tap
+           ===================================================== */
+      AFRAME.registerComponent('throwable-trash', {
+        schema: {
+          type: { type: 'string', default: 'organic' },
+          force: { type: 'number', default: 15 },
+        },
+
+        init: function () {
+          let el = this.el;
+          let data = this.data;
+          let thrown = false;
+
+          // Event saat sampah di-tap
+          el.addEventListener('click', function () {
+            if (thrown || !gameState.binsVisible) return;
+
+            console.log('Melempar sampah: ' + data.type);
+            thrown = true;
+
+            // Berikan gaya impuls (physics)
+            let impulse = new CANNON.Vec3(
+              (Math.random() - 0.5) * 2, // X: random kiri-kanan
+              data.force * 0.8, // Y: ke atas
+              -data.force * 0.6 // Z: ke depan
+            );
+
+            // Dapatkan posisi dunia dari objek
+            let worldPos = new THREE.Vector3();
+            el.object3D.getWorldPosition(worldPos);
+
+            // Apply impulse pada physics body
+            el.body.applyImpulse(impulse, new CANNON.Vec3(worldPos.x, worldPos.y, worldPos.z));
+
+            // Tambah rotasi acak saat terbang
+            el.body.angularVelocity.set(
+              (Math.random() - 0.5) * 10,
+              (Math.random() - 0.5) * 10,
+              (Math.random() - 0.5) * 10
+            );
+
+            showMessage('🚀 Sampah dilempar!');
+
+            // Reset setelah 5 detik
+            setTimeout(() => {
+              thrown = false;
+              el.body.velocity.set(0, 0, 0);
+              el.body.angularVelocity.set(0, 0, 0);
+              el.setAttribute('position', '0 0.5 0');
+            }, 5000);
+          });
+        },
+      });
+
+      /* =====================================================
+           KOMPONEN: TRASH BIN
+           Menangani tabrakan dan scoring
+           ===================================================== */
+      AFRAME.registerComponent('trash-bin', {
+        schema: {
+          binType: { type: 'string', default: 'green' },
+          acceptedTrash: { type: 'string', default: 'organic' },
+        },
+
+        init: function () {
+          let el = this.el;
+          let data = this.data;
+
+          // Event saat terjadi tabrakan
+          el.addEventListener('collide', function (ev) {
+            let collidedEl = ev.detail.body.el;
+
+            // Cek apakah yang nabrak adalah sampah
+            if (collidedEl && collidedEl.hasAttribute('throwable-trash')) {
+              let trashType = collidedEl.getAttribute('throwable-trash').type;
+
+              // Cek apakah sampah masuk ke tong yang benar
+              if (trashType === data.acceptedTrash) {
+                // BENAR! Tambah score
+                let points = 10 + gameState.combo * 5;
+                updateScore(points);
+                updateCombo(gameState.combo + 1);
+
+                showMessage('✅ BENAR! +' + points + ' points!', true);
+
+                // Animasi tong memantul
+                el.setAttribute('animation__bounce', {
+                  property: 'scale',
+                  from: '1 1 1',
+                  to: '1.2 1.2 1.2',
+                  dur: 200,
+                  dir: 'alternate',
+                  loop: 2,
+                });
+
+                // Sembunyikan sampah
+                collidedEl.setAttribute('visible', 'false');
+                collidedEl.body.velocity.set(0, 0, 0);
+              } else {
+                // SALAH! Reset combo
+                updateCombo(0);
+                showMessage('❌ SALAH! Combo reset!', false);
+
+                // Animasi tong bergoyang
+                el.setAttribute('animation__shake', {
+                  property: 'rotation',
+                  from: '0 0 -5',
+                  to: '0 0 5',
+                  dur: 100,
+                  dir: 'alternate',
+                  loop: 3,
+                });
+              }
+            }
+          });
+        },
+      });
+
+      /* =====================================================
+           KOMPONEN: FLOAT ANIMATION
+           Membuat objek melayang naik-turun
+           ===================================================== */
+      AFRAME.registerComponent('float-animation', {
+        schema: {
+          amplitude: { type: 'number', default: 0.1 },
+          speed: { type: 'number', default: 0.002 },
+        },
+
+        init: function () {
+          this.time = 0;
+          this.startY = this.el.getAttribute('position').y;
+        },
+
+        // Update setiap frame
+        tick: function () {
+          this.time += this.data.speed;
+          let newY = this.startY + Math.sin(this.time) * this.data.amplitude;
+
+          let pos = this.el.getAttribute('position');
+          this.el.setAttribute('position', { x: pos.x, y: newY, z: pos.z });
+        },
+      });
+
+      /* =====================================================
+           8TH WALL INITIALIZATION
+           Sembunyikan loading screen saat AR siap
+           ===================================================== */
+      window.XR8
+        ? XR8.addCameraPipelineModule({
+            name: 'loading-handler',
+            onStart: () => {
+              document.getElementById('loading').style.display = 'none';
+            },
+          })
+        : setTimeout(() => {
+            document.getElementById('loading').style.display = 'none';
+          }, 3000);
+    </script>
+
+    <!-- 
+    ================================================================
+    A-FRAME SCENE
+    Ini adalah scene utama AR, berisi kamera, lighting, dan objek 3D
+    ================================================================
+    -->
+    <a-scene
+      xrweb="allowedDevices: any"
+      renderer="colorManagement: true; physicallyCorrectLights: true;"
+      physics="debug: false; gravity: -9.8; friction: 0.3">
+      <!-- Kamera AR -->
+      <a-camera
+        id="camera"
+        position="0 1.6 0"
+        raycaster="objects: .cantap"
+        cursor="fuse: false; rayOrigin: mouse;">
+      </a-camera>
+
+      <!-- Pencahayaan -->
+      <a-light type="ambient" intensity="0.5"></a-light>
+      <a-light type="directional" intensity="0.8" position="1 4 2"></a-light>
+
+      <!-- 
+        ============================================================
+        IMAGE TARGET 1: BINS-LOGO
+        Marker untuk tong sampah
+        PENTING: Upload gambar dengan nama "bins-logo" di 8th Wall!
+        ============================================================
+        -->
+      <a-entity bin-target-handler xrextras-named-image-target="name: bins-logo">
+        <a-entity bin-content visible="false">
+          <!-- Tong Hijau - Organik -->
+          <a-entity position="-0.3 0 0">
+            <a-cylinder
+              trash-bin="binType: green; acceptedTrash: organic"
+              static-body="shape: cylinder"
+              class="cantap"
+              color="#4CAF50"
+              height="0.4"
+              radius="0.12"
+              float-animation="amplitude: 0.03; speed: 0.002"
+              material="metalness: 0.3; roughness: 0.7">
+            </a-cylinder>
+            <a-cone color="#2E7D32" position="0 0.24 0" height="0.08" radius-bottom="0.14"></a-cone>
+            <a-text
+              value="ORGANIK"
+              align="center"
+              color="white"
+              position="0 0.2 0.13"
+              scale="0.15 0.15 0.15"></a-text>
+          </a-entity>
+
+          <!-- Tong Biru - Anorganik -->
+          <a-entity position="0 0 0">
+            <a-cylinder
+              trash-bin="binType: blue; acceptedTrash: inorganic"
+              static-body="shape: cylinder"
+              class="cantap"
+              color="#2196F3"
+              height="0.4"
+              radius="0.12"
+              float-animation="amplitude: 0.03; speed: 0.0025"
+              material="metalness: 0.3; roughness: 0.7">
+            </a-cylinder>
+            <a-cone color="#1565C0" position="0 0.24 0" height="0.08" radius-bottom="0.14"></a-cone>
+            <a-text
+              value="ANORGANIK"
+              align="center"
+              color="white"
+              position="0 0.2 0.13"
+              scale="0.13 0.13 0.13"></a-text>
+          </a-entity>
+
+          <!-- Tong Merah - B3/Hazardous -->
+          <a-entity position="0.3 0 0">
+            <a-cylinder
+              trash-bin="binType: red; acceptedTrash: hazardous"
+              static-body="shape: cylinder"
+              class="cantap"
+              color="#F44336"
+              height="0.4"
+              radius="0.12"
+              float-animation="amplitude: 0.03; speed: 0.003"
+              material="metalness: 0.3; roughness: 0.7">
+            </a-cylinder>
+            <a-cone color="#C62828" position="0 0.24 0" height="0.08" radius-bottom="0.14"></a-cone>
+            <a-text
+              value="B3"
+              align="center"
+              color="white"
+              position="0 0.2 0.13"
+              scale="0.15 0.15 0.15"></a-text>
+          </a-entity>
+
+          <!-- Platform lantai -->
+          <a-plane
+            static-body
+            rotation="-90 0 0"
+            width="1.5"
+            height="1.5"
+            color="#ECEFF1"
+            material="opacity: 0.3"
+            position="0 -0.01 0">
+          </a-plane>
+        </a-entity>
+      </a-entity>
+
+      <!-- 
+        ============================================================
+        IMAGE TARGET 2: ORGANIC-TRASH
+        Marker untuk sampah organik
+        PENTING: Upload gambar dengan nama "organic-trash" di 8th Wall!
+        ============================================================
+        -->
+      <a-entity
+        trash-target-handler="trashType: organic"
+        xrextras-named-image-target="name: organic-trash">
+        <a-entity trash-content visible="false">
+          <a-sphere
+            throwable-trash="type: organic; force: 15"
+            dynamic-body="shape: sphere; mass: 0.5"
+            class="cantap"
+            color="#8BC34A"
+            radius="0.06"
+            position="0 0.2 0"
+            material="metalness: 0.2; roughness: 0.8">
+            <a-text value="🍎" align="center" position="0 0 0.065" scale="0.3 0.3 0.3"></a-text>
+          </a-sphere>
+          <a-text
+            value="Organik"
+            align="center"
+            color="#4CAF50"
+            position="0 0.35 0"
+            scale="0.15 0.15 0.15"></a-text>
+        </a-entity>
+      </a-entity>
+
+      <!-- 
+        ============================================================
+        IMAGE TARGET 3: INORGANIC-TRASH
+        Marker untuk sampah anorganik
+        PENTING: Upload gambar dengan nama "inorganic-trash" di 8th Wall!
+        ============================================================
+        -->
+      <a-entity
+        trash-target-handler="trashType: inorganic"
+        xrextras-named-image-target="name: inorganic-trash">
+        <a-entity trash-content visible="false">
+          <a-box
+            throwable-trash="type: inorganic; force: 15"
+            dynamic-body="shape: box; mass: 0.5"
+            class="cantap"
+            color="#64B5F6"
+            width="0.1"
+            height="0.12"
+            depth="0.06"
+            position="0 0.2 0"
+            material="metalness: 0.6; roughness: 0.4">
+            <a-text value="📦" align="center" position="0 0 0.035" scale="0.3 0.3 0.3"></a-text>
+          </a-box>
+          <a-text
+            value="Anorganik"
+            align="center"
+            color="#2196F3"
+            position="0 0.35 0"
+            scale="0.15 0.15 0.15"></a-text>
+        </a-entity>
+      </a-entity>
+
+      <!-- 
+        ============================================================
+        IMAGE TARGET 4: HAZARDOUS-TRASH
+        Marker untuk sampah B3/berbahaya
+        PENTING: Upload gambar dengan nama "hazardous-trash" di 8th Wall!
+        ============================================================
+        -->
+      <a-entity
+        trash-target-handler="trashType: hazardous"
+        xrextras-named-image-target="name: hazardous-trash">
+        <a-entity trash-content visible="false">
+          <a-cylinder
+            throwable-trash="type: hazardous; force: 15"
+            dynamic-body="shape: cylinder; mass: 0.5"
+            class="cantap"
+            color="#EF5350"
+            height="0.12"
+            radius="0.04"
+            position="0 0.2 0"
+            material="metalness: 0.8; roughness: 0.3; emissive: #FF0000; emissiveIntensity: 0.2">
+            <a-text value="🔋" align="center" position="0 0 0.045" scale="0.3 0.3 0.3"></a-text>
+          </a-cylinder>
+          <a-text
+            value="Hazardous"
+            align="center"
+            color="#F44336"
+            position="0 0.35 0"
+            scale="0.13 0.13 0.13"></a-text>
+        </a-entity>
+      </a-entity>
+    </a-scene>
+
+    <script>
+      console.log(
+        '%c🎮 AR Trash Game - 8th Wall Edition!',
+        'font-size: 20px; color: #4CAF50; font-weight: bold'
+      );
+      console.log('%c📋 Checklist:', 'font-size: 14px; font-weight: bold');
+      console.log('✅ App Key sudah diganti?');
+      console.log('✅ 4 Image targets sudah diupload?');
+      console.log('   1. bins-logo');
+      console.log('   2. organic-trash');
+      console.log('   3. inorganic-trash');
+      console.log('   4. hazardous-trash');
+    </script>
+  </body>
+</html>
