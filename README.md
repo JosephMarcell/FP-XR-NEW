@@ -182,21 +182,6 @@ function updateScore(points) {
 - Camera API support
 - Modern JavaScript (ES6+)
 
-## 🎓 Tips Untuk Presentasi Kampus
-
-1. **Demo Video**: Rekam gameplay sebagai backup
-2. **Backup Marker**: Cetak 2-3 marker cadangan
-3. **Test Sebelumnya**: Coba di ruang presentasi lebih dulu
-4. **PowerPoint**: Jelaskan teknologi yang dipakai
-5. **Source Code**: Highlight bagian penting kode
-
-### Poin-Poin Presentasi
-
-- Jelaskan **kenapa Image Tracking** bukan Object Detection
-- Tunjukkan **library gratis** yang dipakai
-- Demo **cara kerja physics engine**
-- Diskusi **aplikasi untuk edukasi lingkungan**
-
 ## 📚 Referensi & Belajar Lebih Lanjut
 
 - [A-Frame Documentation](https://aframe.io/docs/)
@@ -223,13 +208,3 @@ Proyek ini menggunakan teknologi open source:
 - A-Frame Physics System: MIT License
 
 Anda bebas menggunakan, memodifikasi, dan mendistribusikan untuk keperluan akademik maupun komersial.
-
-## 👨‍💻 Author
-
-Dibuat untuk tugas kampus RX - Teknologi AR Daur Ulang Sampah
-
----
-
-**⭐ Selamat mengerjakan tugas kampus! Semoga dapat nilai A! ⭐**
-
-Jika ada pertanyaan atau error, cek Console browser (F12) untuk debugging.
