@@ -102,7 +102,7 @@
     </div>
     
     <div class="instruction" id="instruction">
-      Pilih sampah, lalu geser layar ke atas untuk melempar!
+      Pilih sampah, lalu sentuh tong sampah yang sesuai!
     </div>
 
     <div id="feedback" class="feedback"></div>
@@ -113,7 +113,7 @@
       <button class="btn btn-anorganik" onclick="spawnTrash('anorganik')">Sampah Anorganik</button>
     </div>
 
-    <a-scene embedded arjs="sourceType: webcam; debugUIEnabled: false;">
+    <a-scene embedded arjs="sourceType: webcam; debugUIEnabled: false;" cursor="rayOrigin: mouse" raycaster="objects: .collidable">
       <a-marker preset="hiro" id="hiro-marker">
         <!-- Bins Container -->
         <a-entity id="bins">
@@ -123,6 +123,7 @@
             scale="0.75 0.75 0.75"
             gltf-model="./assets/models/bin-kertas.glb"
             class="collidable"
+            onclick="handleBinClick('kertas')"
           ></a-entity>
           
           <!-- Bin Organik (Center) -->
@@ -131,6 +132,7 @@
             scale="0.75 0.75 0.75"
             gltf-model="./assets/models/bin-organik.glb"
             class="collidable"
+            onclick="handleBinClick('organik')"
           ></a-entity>
 
           <!-- Bin Anorganik (Right) -->
@@ -139,6 +141,7 @@
             scale="0.75 0.75 0.75"
             gltf-model="./assets/models/bin-anorganik.glb"
             class="collidable"
+            onclick="handleBinClick('anorganik')"
           ></a-entity>
         </a-entity>
       </a-marker>
@@ -153,8 +156,6 @@
     <script>
       let currentScore = 0;
       let currentTrashType = null;
-      let isDragging = false;
-      let startY = 0;
 
       const scoreEl = document.getElementById('score');
       const feedbackEl = document.getElementById('feedback');
@@ -184,161 +185,66 @@
         el.setAttribute('animation', 'property: position; dir: alternate; dur: 1000; easing: easeInOutSine; loop: true; to: 0 -0.45 -1');
         
         trashHolder.appendChild(el);
-        instructionEl.innerText = "Geser ke atas untuk melempar!";
+        instructionEl.innerText = "Sekarang sentuh tong sampah yang sesuai!";
       }
 
-      // Touch/Mouse Interaction
-      document.addEventListener('touchstart', (e) => {
-        startY = e.touches[0].clientY;
-      });
-
-      document.addEventListener('touchend', (e) => {
-        if (!currentTrashType || !trashHolder.firstElementChild) return;
-
-        const endY = e.changedTouches[0].clientY;
-        const deltaY = startY - endY;
-
-        // If swipe up is significant
-        if (deltaY > 100) {
-          throwTrash();
+      // Handle click on bins
+      function handleBinClick(binType) {
+        if (!currentTrashType) {
+          alert("Pilih sampah terlebih dahulu!");
+          return;
         }
-      });
+        
+        throwTrashToBin(binType);
+      }
 
-      // For desktop testing with mouse
-      document.addEventListener('mousedown', (e) => {
-        startY = e.clientY;
-      });
-      document.addEventListener('mouseup', (e) => {
-        if (!currentTrashType || !trashHolder.firstElementChild) return;
-        if (startY - e.clientY > 100) throwTrash();
-      });
-
-      function throwTrash() {
+      function throwTrashToBin(targetBinId) {
         const trashEl = trashHolder.firstElementChild;
         if (!trashEl) return;
 
-        // Detach from camera and attach to scene to move in world space
-        // But for simplicity in AR, we can simulate the throw by checking the "aim"
-        // Since we can't easily reparent in A-Frame without losing transforms,
-        // we will just calculate the result based on screen position or random chance if strictly following "gesture"
-        // BUT, let's try to be smarter:
-        // We assume the user is looking at the bins.
-        // We project a ray from center of screen.
-        
-        // Get World Position of Bins
-        const binKertas = document.querySelector('#bin-kertas');
-        const binOrganik = document.querySelector('#bin-organik');
-        const binAnorganik = document.querySelector('#bin-anorganik');
-        
-        // Simple logic: Which bin is closest to the center of the screen?
-        // We can use THREE.js logic accessing the underlying object3D
-        
-        const marker = document.querySelector('#hiro-marker');
-        if (!marker.object3D.visible) {
-          alert("Arahkan kamera ke Marker Hiro!");
-          return;
-        }
+        // 1. Hide HUD Trash
+        trashHolder.innerHTML = ''; 
 
-        // Calculate screen positions of bins
-        const bins = [
-          { id: 'kertas', el: binKertas },
-          { id: 'organik', el: binOrganik },
-          { id: 'anorganik', el: binAnorganik }
-        ];
-
-        let closestBin = null;
-        let minDistance = Infinity;
+        // 2. Create Projectile in World Space
+        const projectile = document.createElement('a-entity');
+        projectile.setAttribute('gltf-model', trashConfig[currentTrashType].model);
+        projectile.setAttribute('scale', '0.5 0.5 0.5');
         
-        // Camera is at 0,0,0 in camera space.
-        // We need bin positions in camera space.
+        // Start position: Camera World Position
         const camera = document.querySelector('a-entity[camera]').object3D;
+        const startPos = new THREE.Vector3();
+        camera.getWorldPosition(startPos);
+        // Offset slightly forward so it doesn't clip camera
+        const dir = new THREE.Vector3(0, 0, -1);
+        dir.applyQuaternion(camera.quaternion);
+        startPos.add(dir);
         
-        bins.forEach(bin => {
-          const pos = new THREE.Vector3();
-          bin.el.object3D.getWorldPosition(pos);
-          pos.project(camera.children[0]); // Project to NDC (Normalized Device Coordinates)
+        projectile.setAttribute('position', `${startPos.x} ${startPos.y} ${startPos.z}`);
+        
+        // Target Position: The clicked bin
+        const targetBin = document.querySelector(`#bin-${targetBinId}`);
+        const targetPos = new THREE.Vector3();
+        targetBin.object3D.getWorldPosition(targetPos);
+        targetPos.y += 0.5; // Aim for top of bin
+
+        document.querySelector('a-scene').appendChild(projectile);
+
+        // 3. Animate Throw
+        projectile.setAttribute('animation', `property: position; to: ${targetPos.x} ${targetPos.y} ${targetPos.z}; dur: 800; easing: easeInQuad`);
+        projectile.setAttribute('animation__rot', `property: rotation; to: 720 360 0; dur: 800; easing: linear`);
+
+        // 4. Check Result
+        setTimeout(() => {
+          if (projectile.parentNode) projectile.parentNode.removeChild(projectile);
           
-          // Distance from center (0,0)
-          const dist = Math.sqrt(pos.x * pos.x + pos.y * pos.y);
-          
-          if (dist < minDistance) {
-            minDistance = dist;
-            closestBin = bin;
+          if (currentTrashType === targetBinId) {
+            handleSuccess();
+          } else {
+            handleFail();
           }
-        });
-
-        // If closest bin is within a reasonable range (e.g. center of screen)
-        if (closestBin && minDistance < 0.5) {
-          // Animate throw towards that bin
-          // We need to move the trash from camera space to world space visually
-          // For simplicity, we just hide the HUD trash and spawn a temporary projectile
-          
-          trashHolder.innerHTML = ''; // Clear HUD
-          
-          const projectile = document.createElement('a-entity');
-          projectile.setAttribute('gltf-model', trashConfig[currentTrashType].model);
-          projectile.setAttribute('scale', '0.5 0.5 0.5');
-          
-          // Start at camera position (approx)
-          const startPos = new THREE.Vector3();
-          camera.getWorldPosition(startPos);
-          // Move slightly forward
-          const dir = new THREE.Vector3(0, 0, -1);
-          dir.applyQuaternion(camera.quaternion);
-          startPos.add(dir);
-          
-          projectile.setAttribute('position', `${startPos.x} ${startPos.y} ${startPos.z}`);
-          
-          // Target position
-          const targetPos = new THREE.Vector3();
-          closestBin.el.object3D.getWorldPosition(targetPos);
-          // Aim for top of bin
-          targetPos.y += 0.5;
-
-          document.querySelector('a-scene').appendChild(projectile);
-
-          // Animation
-          projectile.setAttribute('animation', `property: position; to: ${targetPos.x} ${targetPos.y} ${targetPos.z}; dur: 800; easing: easeInQuad`);
-          projectile.setAttribute('animation__rot', `property: rotation; to: 720 360 0; dur: 800; easing: linear`);
-
-          // Check Result after animation
-          setTimeout(() => {
-            projectile.parentNode.removeChild(projectile);
-            
-            if (closestBin.id === currentTrashType) {
-              handleSuccess();
-            } else {
-              handleFail();
-            }
-            currentTrashType = null;
-            instructionEl.innerText = "Pilih sampah lagi!";
-          }, 800);
-          
-        } else {
-          // Throw into void
-          trashHolder.innerHTML = '';
-          const projectile = document.createElement('a-entity');
-          projectile.setAttribute('gltf-model', trashConfig[currentTrashType].model);
-          projectile.setAttribute('scale', '0.5 0.5 0.5');
-          
-          const startPos = new THREE.Vector3();
-          camera.getWorldPosition(startPos);
-          const dir = new THREE.Vector3(0, 0, -5); // Far away
-          dir.applyQuaternion(camera.quaternion);
-          const targetPos = startPos.clone().add(dir);
-
-          projectile.setAttribute('position', `${startPos.x} ${startPos.y} ${startPos.z}`);
-          document.querySelector('a-scene').appendChild(projectile);
-          
-          projectile.setAttribute('animation', `property: position; to: ${targetPos.x} ${targetPos.y} ${targetPos.z}; dur: 1000; easing: linear`);
-          
-          setTimeout(() => {
-            projectile.parentNode.removeChild(projectile);
-            instructionEl.innerText = "Meleset! Coba lagi.";
-            handleFail(); // Miss counts as fail or just 0? Let's say fail (-points)
-            currentTrashType = null;
-          }, 1000);
-        }
+          currentTrashType = null;
+          instructionEl.innerText = "Pilih sampah lagi!";
+        }, 800);
       }
 
       function handleSuccess() {
@@ -355,7 +261,6 @@
 
       function updateScore() {
         scoreEl.innerText = currentScore;
-        // Animation for score change
         scoreEl.style.transform = 'scale(1.5)';
         setTimeout(() => {
           scoreEl.style.transform = 'scale(1)';
@@ -369,6 +274,11 @@
           feedbackEl.className = 'feedback';
         }, 1500);
       }
+
+      // Ensure raycaster works for clicks
+      // We need to register the click event on the scene if individual clicks fail,
+      // but A-Frame's cursor component usually handles this well with 'click' event on entities.
+      // The entities already have onclick attributes calling our function.
     </script>
   </body>
 </html>
