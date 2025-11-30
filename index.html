@@ -1,31 +1,36 @@
 <!DOCTYPE html>
-<html lang="id">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-<title>AR Bin</title>
-<script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
-<script src="https://raw.githack.com/AR-js-org/AR.js/3.4.1/aframe/build/aframe-ar.js"></script>
-<style>html,body{margin:0;padding:0;background:#000;overflow:hidden} .ui{position:fixed;left:0;right:0;bottom:0;padding:8px 12px;color:#fff;background:rgba(0,0,0,.35);font-family:system-ui,Arial,sans-serif;font-size:14px;text-align:center}</style>
-</head>
-<body>
-<div class="ui">Arahkan kamera ke marker Hiro</div>
-<a-scene embedded arjs="sourceType: webcam">
-  <a-assets>
-    <a-asset-item id="binAnorganik" src="assets/models/bin-anorganik.glb"></a-asset-item>
-    <a-asset-item id="binKertas" src="assets/models/bin-kertas.glb"></a-asset-item>
-    <a-asset-item id="binOrganik" src="assets/models/bin-organik.glb"></a-asset-item>
-  </a-assets>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>AR Trash Bins</title>
+    <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
+    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+  </head>
+  <body style="margin: 0; overflow: hidden;">
+    <a-scene embedded arjs>
+      <a-marker preset="hiro">
+        <!-- Bin Kertas (Left) -->
+        <a-entity
+          position="-1.5 0 0"
+          scale="0.5 0.5 0.5"
+          gltf-model="./assets/models/bin-kertas.glb"
+        ></a-entity>
+        
+        <!-- Bin Organik (Center) -->
+        <a-entity
+          position="0 0 0"
+          scale="0.5 0.5 0.5"
+          gltf-model="./assets/models/bin-organik.glb"
+        ></a-entity>
 
-  <a-marker preset="hiro">
-    <a-entity gltf-model="#binAnorganik" position="-0.4 0 0" rotation="0 0 0" scale="0.5 0.5 0.5"></a-entity>
-    <a-entity gltf-model="#binKertas" position="0 0 0" rotation="0 0 0" scale="0.5 0.5 0.5"></a-entity>
-    <a-entity gltf-model="#binOrganik" position="0.4 0 0" rotation="0 0 0" scale="0.5 0.5 0.5"></a-entity>
-    <a-entity light="type: ambient; intensity: 0.8"></a-entity>
-    <a-entity light="type: directional; intensity: 0.8" position="0 1 0"></a-entity>
-  </a-marker>
-
-  <a-entity camera></a-entity>
-</a-scene>
-</body>
+        <!-- Bin Anorganik (Right) -->
+        <a-entity
+          position="1.5 0 0"
+          scale="0.5 0.5 0.5"
+          gltf-model="./assets/models/bin-anorganik.glb"
+        ></a-entity>
+      </a-marker>
+      <a-entity camera></a-entity>
+    </a-scene>
+  </body>
 </html>
