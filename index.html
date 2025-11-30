@@ -6,6 +6,11 @@
     <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
     <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
     <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      }
       .ui-container {
         position: fixed;
         bottom: 20px;
@@ -15,105 +20,354 @@
         justify-content: center;
         gap: 15px;
         z-index: 10;
-        pointer-events: none; /* Allow clicks to pass through container */
+        pointer-events: none;
       }
       .btn {
-        pointer-events: auto; /* Re-enable clicks for buttons */
+        pointer-events: auto;
         padding: 12px 24px;
         border: none;
         border-radius: 50px;
         font-weight: bold;
         color: white;
         cursor: pointer;
-        font-family: sans-serif;
         box-shadow: 0 4px 6px rgba(0,0,0,0.3);
         transition: transform 0.1s, filter 0.1s;
+        font-size: 1rem;
       }
-      .btn:active {
-        transform: scale(0.95);
+      .btn:active { transform: scale(0.95); }
+      .btn-kertas { background-color: #3b82f6; }
+      .btn-organik { background-color: #22c55e; }
+      .btn-anorganik { background-color: #ef4444; }
+      
+      .score-board {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: rgba(255, 255, 255, 0.9);
+        padding: 15px 25px;
+        border-radius: 12px;
+        font-size: 24px;
+        font-weight: bold;
+        color: #333;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        z-index: 20;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
       }
-      .btn-kertas { background-color: #3b82f6; } /* Blue */
-      .btn-organik { background-color: #22c55e; } /* Green */
-      .btn-anorganik { background-color: #ef4444; } /* Red */
+      .score-label { font-size: 14px; color: #666; text-transform: uppercase; letter-spacing: 1px; }
+      .score-value { font-size: 36px; color: #2563eb; }
+      
+      .feedback {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        font-size: 48px;
+        font-weight: 900;
+        text-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        pointer-events: none;
+        z-index: 30;
+        opacity: 0;
+        transition: opacity 0.3s;
+      }
+      .feedback.correct { color: #22c55e; }
+      .feedback.wrong { color: #ef4444; }
+      .feedback.show { opacity: 1; animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+
+      @keyframes popIn {
+        0% { transform: translate(-50%, -50%) scale(0.5); }
+        100% { transform: translate(-50%, -50%) scale(1); }
+      }
+
+      .instruction {
+        position: fixed;
+        top: 100px;
+        width: 100%;
+        text-align: center;
+        color: white;
+        font-size: 18px;
+        text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+        pointer-events: none;
+        z-index: 15;
+      }
     </style>
   </head>
-  <body style="margin: 0; overflow: hidden;">
+  <body>
     
-    <!-- UI Buttons -->
-    <div class="ui-container">
-      <button class="btn btn-kertas" onclick="throwTrash('kertas')">Kertas</button>
-      <button class="btn btn-organik" onclick="throwTrash('organik')">Organik</button>
-      <button class="btn btn-anorganik" onclick="throwTrash('anorganik')">Anorganik</button>
+    <!-- HUD UI -->
+    <div class="score-board">
+      <span class="score-label">Score</span>
+      <span id="score" class="score-value">0</span>
+    </div>
+    
+    <div class="instruction" id="instruction">
+      Pilih sampah, lalu geser layar ke atas untuk melempar!
     </div>
 
-    <a-scene embedded arjs>
-      <a-marker preset="hiro" id="hiro-marker">
-        <!-- Bin Kertas (Left) -->
-        <a-entity
-          position="-0.9 0 0"
-          scale="0.75 0.75 0.75"
-          gltf-model="./assets/models/bin-kertas.glb"
-        ></a-entity>
-        
-        <!-- Bin Organik (Center) -->
-        <a-entity
-          position="0 0 0"
-          scale="0.75 0.75 0.75"
-          gltf-model="./assets/models/bin-organik.glb"
-        ></a-entity>
+    <div id="feedback" class="feedback"></div>
 
-        <!-- Bin Anorganik (Right) -->
-        <a-entity
-          position="0.9 0 0"
-          scale="0.75 0.75 0.75"
-          gltf-model="./assets/models/bin-anorganik.glb"
-        ></a-entity>
+    <div class="ui-container">
+      <button class="btn btn-kertas" onclick="spawnTrash('kertas')">Sampah Kertas</button>
+      <button class="btn btn-organik" onclick="spawnTrash('organik')">Sampah Organik</button>
+      <button class="btn btn-anorganik" onclick="spawnTrash('anorganik')">Sampah Anorganik</button>
+    </div>
+
+    <a-scene embedded arjs="sourceType: webcam; debugUIEnabled: false;">
+      <a-marker preset="hiro" id="hiro-marker">
+        <!-- Bins Container -->
+        <a-entity id="bins">
+          <!-- Bin Kertas (Left) -->
+          <a-entity id="bin-kertas"
+            position="-0.9 0 0"
+            scale="0.75 0.75 0.75"
+            gltf-model="./assets/models/bin-kertas.glb"
+            class="collidable"
+          ></a-entity>
+          
+          <!-- Bin Organik (Center) -->
+          <a-entity id="bin-organik"
+            position="0 0 0"
+            scale="0.75 0.75 0.75"
+            gltf-model="./assets/models/bin-organik.glb"
+            class="collidable"
+          ></a-entity>
+
+          <!-- Bin Anorganik (Right) -->
+          <a-entity id="bin-anorganik"
+            position="0.9 0 0"
+            scale="0.75 0.75 0.75"
+            gltf-model="./assets/models/bin-anorganik.glb"
+            class="collidable"
+          ></a-entity>
+        </a-entity>
       </a-marker>
-      <a-entity camera></a-entity>
+
+      <!-- Camera -->
+      <a-entity camera>
+        <!-- Current Trash Holder (Fixed to Camera) -->
+        <a-entity id="trash-holder" position="0 -0.5 -1"></a-entity>
+      </a-entity>
     </a-scene>
 
     <script>
-      function throwTrash(type) {
-        const marker = document.querySelector('#hiro-marker');
-        if (!marker) return;
+      let currentScore = 0;
+      let currentTrashType = null;
+      let isDragging = false;
+      let startY = 0;
 
-        const config = {
-          kertas: { 
-            model: './assets/models/trash-kertas.glb', 
-            targetPosition: '-0.9 0.8 0' 
-          },
-          organik: { 
-            model: './assets/models/trash-organik.glb', 
-            targetPosition: '0 0.8 0' 
-          },
-          anorganik: { 
-            model: './assets/models/trash-anorganik.glb', 
-            targetPosition: '0.9 0.8 0' 
-          }
-        };
+      const scoreEl = document.getElementById('score');
+      const feedbackEl = document.getElementById('feedback');
+      const trashHolder = document.getElementById('trash-holder');
+      const instructionEl = document.getElementById('instruction');
 
-        const item = config[type];
-        if (!item) return;
+      // Configuration for trash models
+      const trashConfig = {
+        kertas: { model: './assets/models/trash-kertas.glb', scale: '0.5 0.5 0.5' },
+        organik: { model: './assets/models/trash-organik.glb', scale: '0.5 0.5 0.5' },
+        anorganik: { model: './assets/models/trash-anorganik.glb', scale: '0.5 0.5 0.5' }
+      };
 
+      // Spawn trash attached to camera
+      function spawnTrash(type) {
+        // Clear existing
+        trashHolder.innerHTML = '';
+        currentTrashType = type;
+        
+        const config = trashConfig[type];
         const el = document.createElement('a-entity');
-        el.setAttribute('gltf-model', item.model);
-        el.setAttribute('scale', '0.3 0.3 0.3');
+        el.setAttribute('gltf-model', config.model);
+        el.setAttribute('scale', config.scale);
+        // Rotate slightly to look nice
+        el.setAttribute('rotation', '0 45 0'); 
+        // Animation for floating effect
+        el.setAttribute('animation', 'property: position; dir: alternate; dur: 1000; easing: easeInOutSine; loop: true; to: 0 -0.45 -1');
         
-        // Start position: Higher and in front (Z=2)
-        el.setAttribute('position', '0 2 2'); 
-        
-        // Animation: Move to bin
-        el.setAttribute('animation', `property: position; to: ${item.targetPosition}; dur: 1000; easing: easeInQuad`);
-        
-        // Animation: Rotate while throwing
-        el.setAttribute('animation__rotate', `property: rotation; to: 360 720 0; dur: 1000; easing: linear`);
+        trashHolder.appendChild(el);
+        instructionEl.innerText = "Geser ke atas untuk melempar!";
+      }
 
-        marker.appendChild(el);
+      // Touch/Mouse Interaction
+      document.addEventListener('touchstart', (e) => {
+        startY = e.touches[0].clientY;
+      });
 
-        // Remove the element after animation completes
+      document.addEventListener('touchend', (e) => {
+        if (!currentTrashType || !trashHolder.firstElementChild) return;
+
+        const endY = e.changedTouches[0].clientY;
+        const deltaY = startY - endY;
+
+        // If swipe up is significant
+        if (deltaY > 100) {
+          throwTrash();
+        }
+      });
+
+      // For desktop testing with mouse
+      document.addEventListener('mousedown', (e) => {
+        startY = e.clientY;
+      });
+      document.addEventListener('mouseup', (e) => {
+        if (!currentTrashType || !trashHolder.firstElementChild) return;
+        if (startY - e.clientY > 100) throwTrash();
+      });
+
+      function throwTrash() {
+        const trashEl = trashHolder.firstElementChild;
+        if (!trashEl) return;
+
+        // Detach from camera and attach to scene to move in world space
+        // But for simplicity in AR, we can simulate the throw by checking the "aim"
+        // Since we can't easily reparent in A-Frame without losing transforms,
+        // we will just calculate the result based on screen position or random chance if strictly following "gesture"
+        // BUT, let's try to be smarter:
+        // We assume the user is looking at the bins.
+        // We project a ray from center of screen.
+        
+        // Get World Position of Bins
+        const binKertas = document.querySelector('#bin-kertas');
+        const binOrganik = document.querySelector('#bin-organik');
+        const binAnorganik = document.querySelector('#bin-anorganik');
+        
+        // Simple logic: Which bin is closest to the center of the screen?
+        // We can use THREE.js logic accessing the underlying object3D
+        
+        const marker = document.querySelector('#hiro-marker');
+        if (!marker.object3D.visible) {
+          alert("Arahkan kamera ke Marker Hiro!");
+          return;
+        }
+
+        // Calculate screen positions of bins
+        const bins = [
+          { id: 'kertas', el: binKertas },
+          { id: 'organik', el: binOrganik },
+          { id: 'anorganik', el: binAnorganik }
+        ];
+
+        let closestBin = null;
+        let minDistance = Infinity;
+        
+        // Camera is at 0,0,0 in camera space.
+        // We need bin positions in camera space.
+        const camera = document.querySelector('a-entity[camera]').object3D;
+        
+        bins.forEach(bin => {
+          const pos = new THREE.Vector3();
+          bin.el.object3D.getWorldPosition(pos);
+          pos.project(camera.children[0]); // Project to NDC (Normalized Device Coordinates)
+          
+          // Distance from center (0,0)
+          const dist = Math.sqrt(pos.x * pos.x + pos.y * pos.y);
+          
+          if (dist < minDistance) {
+            minDistance = dist;
+            closestBin = bin;
+          }
+        });
+
+        // If closest bin is within a reasonable range (e.g. center of screen)
+        if (closestBin && minDistance < 0.5) {
+          // Animate throw towards that bin
+          // We need to move the trash from camera space to world space visually
+          // For simplicity, we just hide the HUD trash and spawn a temporary projectile
+          
+          trashHolder.innerHTML = ''; // Clear HUD
+          
+          const projectile = document.createElement('a-entity');
+          projectile.setAttribute('gltf-model', trashConfig[currentTrashType].model);
+          projectile.setAttribute('scale', '0.5 0.5 0.5');
+          
+          // Start at camera position (approx)
+          const startPos = new THREE.Vector3();
+          camera.getWorldPosition(startPos);
+          // Move slightly forward
+          const dir = new THREE.Vector3(0, 0, -1);
+          dir.applyQuaternion(camera.quaternion);
+          startPos.add(dir);
+          
+          projectile.setAttribute('position', `${startPos.x} ${startPos.y} ${startPos.z}`);
+          
+          // Target position
+          const targetPos = new THREE.Vector3();
+          closestBin.el.object3D.getWorldPosition(targetPos);
+          // Aim for top of bin
+          targetPos.y += 0.5;
+
+          document.querySelector('a-scene').appendChild(projectile);
+
+          // Animation
+          projectile.setAttribute('animation', `property: position; to: ${targetPos.x} ${targetPos.y} ${targetPos.z}; dur: 800; easing: easeInQuad`);
+          projectile.setAttribute('animation__rot', `property: rotation; to: 720 360 0; dur: 800; easing: linear`);
+
+          // Check Result after animation
+          setTimeout(() => {
+            projectile.parentNode.removeChild(projectile);
+            
+            if (closestBin.id === currentTrashType) {
+              handleSuccess();
+            } else {
+              handleFail();
+            }
+            currentTrashType = null;
+            instructionEl.innerText = "Pilih sampah lagi!";
+          }, 800);
+          
+        } else {
+          // Throw into void
+          trashHolder.innerHTML = '';
+          const projectile = document.createElement('a-entity');
+          projectile.setAttribute('gltf-model', trashConfig[currentTrashType].model);
+          projectile.setAttribute('scale', '0.5 0.5 0.5');
+          
+          const startPos = new THREE.Vector3();
+          camera.getWorldPosition(startPos);
+          const dir = new THREE.Vector3(0, 0, -5); // Far away
+          dir.applyQuaternion(camera.quaternion);
+          const targetPos = startPos.clone().add(dir);
+
+          projectile.setAttribute('position', `${startPos.x} ${startPos.y} ${startPos.z}`);
+          document.querySelector('a-scene').appendChild(projectile);
+          
+          projectile.setAttribute('animation', `property: position; to: ${targetPos.x} ${targetPos.y} ${targetPos.z}; dur: 1000; easing: linear`);
+          
+          setTimeout(() => {
+            projectile.parentNode.removeChild(projectile);
+            instructionEl.innerText = "Meleset! Coba lagi.";
+            handleFail(); // Miss counts as fail or just 0? Let's say fail (-points)
+            currentTrashType = null;
+          }, 1000);
+        }
+      }
+
+      function handleSuccess() {
+        currentScore += 10;
+        updateScore();
+        showFeedback('BENAR! +10', 'correct');
+      }
+
+      function handleFail() {
+        currentScore -= 5;
+        updateScore();
+        showFeedback('SALAH! -5', 'wrong');
+      }
+
+      function updateScore() {
+        scoreEl.innerText = currentScore;
+        // Animation for score change
+        scoreEl.style.transform = 'scale(1.5)';
         setTimeout(() => {
-          if (el.parentNode) el.parentNode.removeChild(el);
-        }, 1000);
+          scoreEl.style.transform = 'scale(1)';
+        }, 200);
+      }
+
+      function showFeedback(text, type) {
+        feedbackEl.innerText = text;
+        feedbackEl.className = `feedback show ${type}`;
+        setTimeout(() => {
+          feedbackEl.className = 'feedback';
+        }, 1500);
       }
     </script>
   </body>
