@@ -5,13 +5,52 @@
     <title>AR Trash Bins</title>
     <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
     <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+    <style>
+      .ui-container {
+        position: fixed;
+        bottom: 20px;
+        left: 0;
+        width: 100%;
+        display: flex;
+        justify-content: center;
+        gap: 15px;
+        z-index: 10;
+        pointer-events: none; /* Allow clicks to pass through container */
+      }
+      .btn {
+        pointer-events: auto; /* Re-enable clicks for buttons */
+        padding: 12px 24px;
+        border: none;
+        border-radius: 50px;
+        font-weight: bold;
+        color: white;
+        cursor: pointer;
+        font-family: sans-serif;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        transition: transform 0.1s, filter 0.1s;
+      }
+      .btn:active {
+        transform: scale(0.95);
+      }
+      .btn-kertas { background-color: #3b82f6; } /* Blue */
+      .btn-organik { background-color: #22c55e; } /* Green */
+      .btn-anorganik { background-color: #ef4444; } /* Red */
+    </style>
   </head>
   <body style="margin: 0; overflow: hidden;">
+    
+    <!-- UI Buttons -->
+    <div class="ui-container">
+      <button class="btn btn-kertas" onclick="throwTrash('kertas')">Kertas</button>
+      <button class="btn btn-organik" onclick="throwTrash('organik')">Organik</button>
+      <button class="btn btn-anorganik" onclick="throwTrash('anorganik')">Anorganik</button>
+    </div>
+
     <a-scene embedded arjs>
-      <a-marker preset="hiro">
+      <a-marker preset="hiro" id="hiro-marker">
         <!-- Bin Kertas (Left) -->
         <a-entity
-          position="-1.5 0 0"
+          position="-0.8 0 0"
           scale="0.5 0.5 0.5"
           gltf-model="./assets/models/bin-kertas.glb"
         ></a-entity>
@@ -25,12 +64,57 @@
 
         <!-- Bin Anorganik (Right) -->
         <a-entity
-          position="1.5 0 0"
+          position="0.8 0 0"
           scale="0.5 0.5 0.5"
           gltf-model="./assets/models/bin-anorganik.glb"
         ></a-entity>
       </a-marker>
       <a-entity camera></a-entity>
     </a-scene>
+
+    <script>
+      function throwTrash(type) {
+        const marker = document.querySelector('#hiro-marker');
+        if (!marker) return;
+
+        const config = {
+          kertas: { 
+            model: './assets/models/trash-kertas.glb', 
+            targetPosition: '-0.8 0.5 0' 
+          },
+          organik: { 
+            model: './assets/models/trash-organik.glb', 
+            targetPosition: '0 0.5 0' 
+          },
+          anorganik: { 
+            model: './assets/models/trash-anorganik.glb', 
+            targetPosition: '0.8 0.5 0' 
+          }
+        };
+
+        const item = config[type];
+        if (!item) return;
+
+        const el = document.createElement('a-entity');
+        el.setAttribute('gltf-model', item.model);
+        el.setAttribute('scale', '0.3 0.3 0.3');
+        
+        // Start position: Higher and in front (Z=2)
+        el.setAttribute('position', '0 2 2'); 
+        
+        // Animation: Move to bin
+        el.setAttribute('animation', `property: position; to: ${item.targetPosition}; dur: 1000; easing: easeInQuad`);
+        
+        // Animation: Rotate while throwing
+        el.setAttribute('animation__rotate', `property: rotation; to: 360 720 0; dur: 1000; easing: linear`);
+
+        marker.appendChild(el);
+
+        // Remove the element after animation completes
+        setTimeout(() => {
+          if (el.parentNode) el.parentNode.removeChild(el);
+        }, 1000);
+      }
+    </script>
   </body>
 </html>
